@@ -15,10 +15,14 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from earth_trip.core.animator import FrameSpec, CityVisible
 from earth_trip.core.geocoder import CityInfo
 from earth_trip.core import cache as _cache_mod
+from earth_trip.core import tiles as _tiles
 
 W, H = 1080, 1920
 CX, CY = W // 2, H // 2
 GLOBE_R = 520  # globe radius in pixels (normal full-globe view)
+
+# Switch from Blue Marble to satellite tiles above this radius
+_TILE_MIN_R: float = GLOBE_R * 2.0  # ≈ 1040 px
 
 
 # ── Font helpers ────────────────────────────────────────────────────────────
@@ -90,23 +94,26 @@ def geo_to_pixel(
     return (px, py)
 
 
-def _project_globe(
-    earth: np.ndarray, clon_deg: float, clat_deg: float, globe_r: float = GLOBE_R
-) -> np.ndarray:
-    """Vectorized inverse orthographic projection: pixel → Earth texture sample."""
-    ex, ey, ez = _camera_basis(clon_deg, clat_deg)
-
+def _screen_coords(globe_r: float):
+    """Shared setup: returns (visible_mask, lat_rad, lon_rad, ex, ey, ez)."""
     x_idx = np.arange(W, dtype=np.float32)
     y_idx = np.arange(H, dtype=np.float32)
     X, Y = np.meshgrid(x_idx, y_idx)
-
     sx = (X - CX) / globe_r
     sy = (CY - Y) / globe_r
     r2 = sx * sx + sy * sy
     visible = r2 <= 1.0
     sz = np.where(visible, np.sqrt(np.clip(1.0 - r2, 0.0, 1.0)), 0.0)
+    return visible, sx, sy, sz
 
-    # World 3-D coordinates
+
+def _project_globe(
+    earth: np.ndarray, clon_deg: float, clat_deg: float, globe_r: float = GLOBE_R
+) -> np.ndarray:
+    """Vectorized inverse orthographic projection: pixel → Earth texture sample."""
+    ex, ey, ez = _camera_basis(clon_deg, clat_deg)
+    visible, sx, sy, sz = _screen_coords(globe_r)
+
     x3 = sx * ex[0] + sy * ey[0] + sz * ez[0]
     y3 = sx * ex[1] + sy * ey[1] + sz * ez[1]
     z3 = sx * ex[2] + sy * ey[2] + sz * ez[2]
@@ -122,6 +129,60 @@ def _project_globe(
 
     result = np.zeros((H, W, 3), dtype=np.uint8)
     result[visible] = earth[src_y[visible], src_x[visible]]
+    return result
+
+
+def _project_globe_tiled(
+    patch: np.ndarray,
+    lat_min: float, lat_max: float,
+    lon_min: float, lon_max: float,
+    earth_fallback: np.ndarray,
+    clon_deg: float, clat_deg: float,
+    globe_r: float,
+) -> np.ndarray:
+    """
+    Inverse orthographic projection sampling from a local equirectangular tile patch.
+    Falls back to the Blue Marble texture for any visible pixels outside the patch bounds.
+    """
+    ex, ey, ez = _camera_basis(clon_deg, clat_deg)
+    visible, sx, sy, sz = _screen_coords(globe_r)
+
+    x3 = sx * ex[0] + sy * ey[0] + sz * ez[0]
+    y3 = sx * ex[1] + sy * ey[1] + sz * ez[1]
+    z3 = sx * ex[2] + sy * ey[2] + sz * ez[2]
+
+    lat_rad = np.arcsin(np.clip(z3, -1.0, 1.0))
+    lon_rad = np.arctan2(y3, x3)
+    lat_deg = np.degrees(lat_rad)
+    lon_deg = np.degrees(lon_rad)
+
+    ph, pw = patch.shape[:2]
+    in_patch = (
+        visible
+        & (lat_deg >= lat_min) & (lat_deg <= lat_max)
+        & (lon_deg >= lon_min) & (lon_deg <= lon_max)
+    )
+    outside = visible & ~in_patch
+
+    result = np.zeros((H, W, 3), dtype=np.uint8)
+
+    if in_patch.any():
+        px = np.clip(
+            ((lon_deg - lon_min) / (lon_max - lon_min) * pw).astype(np.int32), 0, pw - 1
+        )
+        py = np.clip(
+            ((lat_max - lat_deg) / (lat_max - lat_min) * ph).astype(np.int32), 0, ph - 1
+        )
+        result[in_patch] = patch[py[in_patch], px[in_patch]]
+
+    if outside.any():
+        sh, sw = earth_fallback.shape[:2]
+        gx = ((lon_rad + math.pi) / (2 * math.pi) * sw).astype(np.int32) % sw
+        gy = np.clip(
+            ((math.pi / 2 - lat_rad) / math.pi * sh).astype(np.int32), 0, sh - 1
+        )
+        result[outside] = earth_fallback[gy[outside], gx[outside]]
+
     return result
 
 
@@ -173,7 +234,17 @@ class GlobeRenderer:
     def _get_globe_frame(self, clon: float, clat: float, globe_r: float) -> np.ndarray:
         key = (round(clon, 1), round(clat, 1), round(globe_r, -1))
         if key not in self._globe_cache:
-            projected = _project_globe(self.earth, clon, clat, globe_r)
+            projected = None
+            if globe_r > _TILE_MIN_R:
+                patch_result = _tiles.get_patch(clat, clon, globe_r)
+                if patch_result is not None:
+                    patch, lat_min, lat_max, lon_min, lon_max = patch_result
+                    projected = _project_globe_tiled(
+                        patch, lat_min, lat_max, lon_min, lon_max,
+                        self.earth, clon, clat, globe_r,
+                    )
+            if projected is None:
+                projected = _project_globe(self.earth, clon, clat, globe_r)
             base = self._star_base.copy()
             mask = self._get_globe_mask(globe_r)
             base[mask] = projected[mask]
