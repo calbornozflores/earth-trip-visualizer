@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSlot
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QPalette, QColor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -141,38 +141,31 @@ class PlayerPanel(QWidget):
 
     # ── Slots ──────────────────────────────────────────────────────────────
 
-    @pyqtSlot()
     def _toggle_play(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()
 
-    @pyqtSlot()
     def _rewind(self) -> None:
         self.player.setPosition(max(0, self.player.position() - 10_000))
 
-    @pyqtSlot()
     def _on_slider_pressed(self) -> None:
         self._seeking = True
 
-    @pyqtSlot()
     def _on_slider_released(self) -> None:
         self._seeking = False
         self.player.setPosition(self.seek_slider.value())
 
-    @pyqtSlot(int)
     def _on_slider_moved(self, value: int) -> None:
         self.time_label.setText(f"{_ms_to_str(value)} / {_ms_to_str(self.player.duration())}")
 
-    @pyqtSlot(QMediaPlayer.PlaybackState)
     def _on_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         if state == QMediaPlayer.PlaybackState.PlayingState:
             self.play_btn.setText("⏸")
         else:
             self.play_btn.setText("▶")
 
-    @pyqtSlot(int)
     def _on_position_changed(self, pos: int) -> None:
         if not self._seeking:
             self.seek_slider.setValue(pos)
@@ -180,11 +173,9 @@ class PlayerPanel(QWidget):
             f"{_ms_to_str(pos)} / {_ms_to_str(self.player.duration())}"
         )
 
-    @pyqtSlot(int)
     def _on_duration_changed(self, dur: int) -> None:
         self.seek_slider.setRange(0, dur)
 
-    @pyqtSlot()
     def _download(self) -> None:
         if not self._current_path:
             return

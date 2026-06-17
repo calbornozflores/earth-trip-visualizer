@@ -90,7 +90,7 @@ class CityPanel(QWidget):
         self._cities.append(item)
         self._list_layout.addWidget(item)
 
-        self._list_layout.addStretch(stretch.spacerItem().expandingDirections() if stretch and stretch.spacerItem() else 1)
+        self._list_layout.addStretch(1)
 
     def _remove_city(self, item: CityItem) -> None:
         if len(self._cities) <= 2:

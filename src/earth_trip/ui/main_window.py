@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QMainWindow, QMessageBox, QProgressDialog,
     QSplitter, QWidget,
@@ -243,7 +243,6 @@ class MainWindow(QMainWindow):
                 "Earth texture missing.\nRun: uv run python scripts/download_assets.py"
             )
 
-    @pyqtSlot(list, list)
     def _on_generate(self, city_names: list[str], transports: list[str]) -> None:
         if not _TEXTURE.exists():
             QMessageBox.critical(
@@ -269,20 +268,17 @@ class MainWindow(QMainWindow):
         self._progress_dlg.canceled.connect(self._worker.cancel)
         self._worker.start()
 
-    @pyqtSlot(int, str)
     def _on_progress(self, pct: int, msg: str) -> None:
         if self._progress_dlg:
             self._progress_dlg.setValue(pct)
             self._progress_dlg.setLabelText(msg)
 
-    @pyqtSlot(str)
     def _on_finished(self, path: str) -> None:
         if self._progress_dlg:
             self._progress_dlg.close()
             self._progress_dlg = None
         self.player_panel.load_video(path)
 
-    @pyqtSlot(str)
     def _on_error(self, msg: str) -> None:
         if self._progress_dlg:
             self._progress_dlg.close()
