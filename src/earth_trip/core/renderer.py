@@ -311,15 +311,15 @@ class GlobeRenderer:
 
     def _draw_transport_badge(self, img: Image.Image, label: str) -> None:
         draw = ImageDraw.Draw(img)
-        fn = _font(34)
+        fn = _font(72)
         bbox = draw.textbbox((0, 0), label, font=fn)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
-        pad_x, pad_y = 28, 14
+        pad_x, pad_y = 48, 24
         bw = tw + pad_x * 2
         bh = th + pad_y * 2
         bx = (W - bw) // 2
-        by = 80
+        by = 120
 
         # Pill background
         pill = Image.new("RGBA", (bw + 4, bh + 4), (0, 0, 0, 0))
