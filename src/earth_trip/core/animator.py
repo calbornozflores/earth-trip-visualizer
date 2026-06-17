@@ -27,11 +27,11 @@ _D_MIN_KM = 100.0     # ≤ this → GLOBE_R_ZOOM_MAX
 _D_MAX_KM = 10000.0   # ≥ this → GLOBE_R_ZOOM_MIN
 
 TRANSPORT_LABELS = {
-    "plane": "✈  Plane",
-    "train": "🚂  Train",
-    "bus": "🚌  Bus",
-    "car": "🚗  Car",
-    "ship": "⛴  Ship",
+    "plane": "plane",
+    "train": "train",
+    "bus":   "bus",
+    "car":   "car",
+    "ship":  "ship",
 }
 
 

@@ -5,12 +5,14 @@ No matplotlib/Cartopy — ~50-100ms per unique globe position on ARM64.
 from __future__ import annotations
 
 import math
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from platformdirs import user_cache_dir as _user_cache_dir
 
 from earth_trip.core.animator import FrameSpec, CityVisible
 from earth_trip.core.geocoder import CityInfo
@@ -23,6 +25,17 @@ GLOBE_R = 520  # globe radius in pixels (normal full-globe view)
 
 # Switch from Blue Marble to satellite tiles above this radius
 _TILE_MIN_R: float = GLOBE_R * 2.0  # ≈ 1040 px
+
+# Twemoji icon assets (CC BY 4.0 — https://twemoji.twitter.com)
+_TWEMOJI_HEX: dict[str, str] = {
+    "plane": "2708-fe0f",
+    "train": "1f686",
+    "bus":   "1f68c",
+    "car":   "1f697",
+    "ship":  "1f6a2",
+}
+_TWEMOJI_URL = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{hex}.png"
+_ICON_CACHE_DIR = Path(_user_cache_dir("earth-trip-visualizer")) / "icons"
 
 
 # ── Font helpers ────────────────────────────────────────────────────────────
@@ -196,6 +209,7 @@ class GlobeRenderer:
         self._globe_cache: dict[tuple, np.ndarray] = {}
         self._mask_cache: dict[int, np.ndarray] = {}
         self._flag_cache: dict[str, Image.Image | None] = {}
+        self._icon_cache: dict[str, Image.Image | None] = {}
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -381,31 +395,78 @@ class GlobeRenderer:
         )
 
     def _draw_transport_badge(self, img: Image.Image, label: str) -> None:
-        draw = ImageDraw.Draw(img)
-        fn = _font(72)
-        bbox = draw.textbbox((0, 0), label, font=fn)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        pad_x, pad_y = 48, 24
-        bw = tw + pad_x * 2
-        bh = th + pad_y * 2
-        bx = (W - bw) // 2
-        by = 120
+        icon = self._get_transport_icon(label)
+        if icon is None:
+            return
 
-        # Pill background
-        pill = Image.new("RGBA", (bw + 4, bh + 4), (0, 0, 0, 0))
-        pd = ImageDraw.Draw(pill)
-        pd.rounded_rectangle([0, 0, bw + 3, bh + 3], radius=bh // 2,
-                              fill=(20, 30, 60, 200))
-        pd.rounded_rectangle([0, 0, bw + 3, bh + 3], radius=bh // 2,
-                              outline=(79, 156, 249, 160), width=2)
-        img.alpha_composite(pill, (bx - 2, by - 2))
-        draw.text(
-            (bx + pad_x - bbox[0], by + pad_y - bbox[1]),
-            label,
-            font=fn,
-            fill=(230, 240, 255, 230),
-        )
+        bsize = 216   # badge diameter
+        isize = 150   # icon display size
+        pad = (bsize - isize) // 2
+
+        badge = Image.new("RGBA", (bsize, bsize), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(badge)
+
+        # Outer glow rings
+        for dr in range(14, 0, -1):
+            alpha = int(85 * (1 - dr / 14) ** 2)
+            r = bsize // 2 + dr
+            cx = bsize // 2
+            bd.ellipse([cx - r, cx - r, cx + r - 1, cx + r - 1],
+                       outline=(79, 156, 249, alpha), width=1)
+
+        # Dark fill
+        bd.ellipse([0, 0, bsize - 1, bsize - 1], fill=(12, 22, 52, 215))
+        # Blue ring
+        bd.ellipse([0, 0, bsize - 1, bsize - 1], outline=(79, 156, 249, 175), width=2)
+
+        # Glass highlight — subtle bright ellipse on upper third
+        hl = Image.new("RGBA", (bsize, bsize), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(hl)
+        hd.ellipse([bsize // 4, -bsize // 5, 3 * bsize // 4, bsize // 2],
+                   fill=(255, 255, 255, 20))
+        badge.alpha_composite(hl)
+
+        # Icon
+        icon_sized = icon.resize((isize, isize), Image.LANCZOS)
+        badge.paste(icon_sized, (pad, pad), icon_sized)
+
+        bx = (W - bsize) // 2
+        img.alpha_composite(badge, (bx, 64))
+
+    def _get_transport_icon(self, key: str) -> Image.Image | None:
+        if key in self._icon_cache:
+            return self._icon_cache[key]
+
+        hex_code = _TWEMOJI_HEX.get(key)
+        if hex_code is None:
+            self._icon_cache[key] = None
+            return None
+
+        _ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        path = _ICON_CACHE_DIR / f"{key}.png"
+
+        if path.exists():
+            try:
+                img = Image.open(path).convert("RGBA")
+                self._icon_cache[key] = img
+                return img
+            except Exception:
+                path.unlink(missing_ok=True)
+
+        url = _TWEMOJI_URL.format(hex=hex_code)
+        try:
+            r = requests.get(url, timeout=10,
+                             headers={"User-Agent": "earth-trip-visualizer/1.0"})
+            if r.status_code == 200:
+                path.write_bytes(r.content)
+                img = Image.open(BytesIO(r.content)).convert("RGBA")
+                self._icon_cache[key] = img
+                return img
+        except Exception:
+            pass
+
+        self._icon_cache[key] = None
+        return None
 
     # ── Flag fetching ──────────────────────────────────────────────────────
 
