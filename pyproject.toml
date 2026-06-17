@@ -1,0 +1,25 @@
+[project]
+name = "earth-trip-visualizer"
+version = "0.1.0"
+description = "Generate Instagram Stories videos of travel routes on a 3D globe"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "PyQt6>=6.6",
+    "numpy>=1.26",
+    "pillow>=10.2",
+    "geopy>=2.4",
+    "requests>=2.31",
+    "pycountry>=23.12",
+    "platformdirs>=4.2",
+]
+
+[project.scripts]
+earth-trip = "earth_trip.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/earth_trip"]
