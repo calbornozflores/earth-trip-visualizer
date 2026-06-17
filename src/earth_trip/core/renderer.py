@@ -18,7 +18,7 @@ from earth_trip.core import cache as _cache_mod
 
 W, H = 1080, 1920
 CX, CY = W // 2, H // 2
-GLOBE_R = 520  # globe radius in pixels
+GLOBE_R = 520  # globe radius in pixels (normal full-globe view)
 
 
 # ── Font helpers ────────────────────────────────────────────────────────────
@@ -69,6 +69,7 @@ def _camera_basis(clon_deg: float, clat_deg: float):
 def geo_to_pixel(
     lat_deg: float, lon_deg: float,
     clon_deg: float, clat_deg: float,
+    globe_r: float = GLOBE_R,
 ) -> tuple[int, int] | None:
     """Forward orthographic projection. Returns None if on far hemisphere."""
     lat = math.radians(lat_deg)
@@ -84,12 +85,14 @@ def geo_to_pixel(
         return None
     sx = float(np.dot(p, ex))
     sy = float(np.dot(p, ey))
-    px = int(CX + sx * GLOBE_R)
-    py = int(CY - sy * GLOBE_R)
+    px = int(CX + sx * globe_r)
+    py = int(CY - sy * globe_r)
     return (px, py)
 
 
-def _project_globe(earth: np.ndarray, clon_deg: float, clat_deg: float) -> np.ndarray:
+def _project_globe(
+    earth: np.ndarray, clon_deg: float, clat_deg: float, globe_r: float = GLOBE_R
+) -> np.ndarray:
     """Vectorized inverse orthographic projection: pixel → Earth texture sample."""
     ex, ey, ez = _camera_basis(clon_deg, clat_deg)
 
@@ -97,8 +100,8 @@ def _project_globe(earth: np.ndarray, clon_deg: float, clat_deg: float) -> np.nd
     y_idx = np.arange(H, dtype=np.float32)
     X, Y = np.meshgrid(x_idx, y_idx)
 
-    sx = (X - CX) / GLOBE_R
-    sy = (CY - Y) / GLOBE_R
+    sx = (X - CX) / globe_r
+    sy = (CY - Y) / globe_r
     r2 = sx * sx + sy * sy
     visible = r2 <= 1.0
     sz = np.where(visible, np.sqrt(np.clip(1.0 - r2, 0.0, 1.0)), 0.0)
@@ -129,21 +132,25 @@ class GlobeRenderer:
         self.earth = np.array(Image.open(earth_texture_path).convert("RGB"))
         self._star_base: np.ndarray = self._make_star_field()
         self._atmo: Image.Image = self._make_atmosphere()
-        self._globe_mask: np.ndarray = self._make_globe_mask()
         self._globe_cache: dict[tuple, np.ndarray] = {}
+        self._mask_cache: dict[int, np.ndarray] = {}
         self._flag_cache: dict[str, Image.Image | None] = {}
 
     # ── Public API ─────────────────────────────────────────────────────────
 
     def render_frame(self, spec: FrameSpec) -> np.ndarray:
-        frame = self._get_globe_frame(spec.central_lon, spec.central_lat).copy()
+        globe_r = spec.globe_r
+        frame = self._get_globe_frame(spec.central_lon, spec.central_lat, globe_r).copy()
 
         img = Image.fromarray(frame).convert("RGBA")
-        img.alpha_composite(self._atmo)
+
+        # Atmosphere only visible at normal (unzoomed) globe radius
+        if globe_r <= GLOBE_R * 1.5:
+            img.alpha_composite(self._atmo)
 
         self._draw_arc(img, spec)
         for cv in spec.cities_visible:
-            self._draw_city(img, cv, spec.central_lon, spec.central_lat)
+            self._draw_city(img, cv, spec.central_lon, spec.central_lat, globe_r)
         if spec.transport_label:
             self._draw_transport_badge(img, spec.transport_label)
 
@@ -154,12 +161,22 @@ class GlobeRenderer:
 
     # ── Globe base ─────────────────────────────────────────────────────────
 
-    def _get_globe_frame(self, clon: float, clat: float) -> np.ndarray:
-        key = (round(clon, 1), round(clat, 1))
+    def _get_globe_mask(self, globe_r: float) -> np.ndarray:
+        key = round(globe_r, -1)
+        if key not in self._mask_cache:
+            y_idx = np.arange(H, dtype=np.float32)
+            x_idx = np.arange(W, dtype=np.float32)
+            X, Y = np.meshgrid(x_idx, y_idx)
+            self._mask_cache[key] = ((X - CX) ** 2 + (Y - CY) ** 2) <= key ** 2
+        return self._mask_cache[key]
+
+    def _get_globe_frame(self, clon: float, clat: float, globe_r: float) -> np.ndarray:
+        key = (round(clon, 1), round(clat, 1), round(globe_r, -1))
         if key not in self._globe_cache:
-            projected = _project_globe(self.earth, clon, clat)
+            projected = _project_globe(self.earth, clon, clat, globe_r)
             base = self._star_base.copy()
-            base[self._globe_mask] = projected[self._globe_mask]
+            mask = self._get_globe_mask(globe_r)
+            base[mask] = projected[mask]
             self._globe_cache[key] = base
         return self._globe_cache[key]
 
@@ -200,24 +217,20 @@ class GlobeRenderer:
                          outline=(140, 200, 255, alpha), width=1)
         return img
 
-    def _make_globe_mask(self) -> np.ndarray:
-        y_idx = np.arange(H, dtype=np.float32)
-        x_idx = np.arange(W, dtype=np.float32)
-        X, Y = np.meshgrid(x_idx, y_idx)
-        return ((X - CX) ** 2 + (Y - CY) ** 2) <= GLOBE_R ** 2
-
     # ── Overlays ───────────────────────────────────────────────────────────
 
     def _draw_arc(self, img: Image.Image, spec: FrameSpec) -> None:
         if spec.arc_lats is None or spec.arc_progress <= 0:
             return
 
+        globe_r = spec.globe_r
         n = max(2, int(spec.arc_progress * len(spec.arc_lats)))
         pts: list[tuple[int, int]] = []
         for i in range(n):
             pt = geo_to_pixel(
                 float(spec.arc_lats[i]), float(spec.arc_lons[i]),
                 spec.central_lon, spec.central_lat,
+                globe_r,
             )
             if pt:
                 pts.append(pt)
@@ -226,13 +239,11 @@ class GlobeRenderer:
             return
 
         draw = ImageDraw.Draw(img)
-        # Dashed line: draw every other segment
         step = max(1, len(pts) // 80)
         for i in range(0, len(pts) - step, step * 2):
             j = min(i + step, len(pts) - 1)
             draw.line([pts[i], pts[j]], fill=(255, 220, 80, 200), width=3)
 
-        # Animated dot at arc tip
         tip = pts[-1]
         for r, a in [(10, 60), (6, 120), (3, 220)]:
             draw.ellipse(
@@ -246,8 +257,9 @@ class GlobeRenderer:
         cv: CityVisible,
         clon: float,
         clat: float,
+        globe_r: float,
     ) -> None:
-        pt = geo_to_pixel(cv.city.lat, cv.city.lon, clon, clat)
+        pt = geo_to_pixel(cv.city.lat, cv.city.lon, clon, clat, globe_r)
         if pt is None:
             return
 

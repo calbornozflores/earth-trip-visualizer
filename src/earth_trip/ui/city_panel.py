@@ -12,7 +12,7 @@ from earth_trip.ui.city_item import CityItem, TransportSelector
 class CityPanel(QWidget):
     """Left panel: journey builder."""
 
-    generate_requested = pyqtSignal(list, list)  # city_names, transport_keys
+    generate_requested = pyqtSignal(list, list, list, list)  # city_names, transport_keys, city_pause_secs, transition_secs
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -124,4 +124,6 @@ class CityPanel(QWidget):
             )
             return
         transport_keys = [t.transport_key() for t in self._transports]
-        self.generate_requested.emit(names, transport_keys)
+        city_pause_secs = [c.pause_secs() for c in self._cities]
+        transition_secs = [t.transition_secs() for t in self._transports]
+        self.generate_requested.emit(names, transport_keys, city_pause_secs, transition_secs)

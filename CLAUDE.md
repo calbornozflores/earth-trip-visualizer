@@ -2,7 +2,7 @@
 
 ## What this project is
 
-A PyQt6 desktop app that takes a list of cities and transport modes, then renders a cinematic 9:16 (1080×1920) Instagram Stories MP4 showing a Google-Earth-style fly-through on a 3D globe. Each city gets a 2-second pause with a glowing pin, country flag, and city name. Transitions animate a great-circle dotted arc with a transport badge.
+A PyQt6 desktop app that takes a list of cities and transport modes, then renders a cinematic 9:16 (1080×1920) Instagram Stories MP4 showing a Google-Earth-style fly-through on a 3D globe. Each city gets a configurable pause (default 2 s) with a glowing pin, country flag, and city name — shown zoomed in from the sky (~1700 km view). Transitions animate a great-circle dotted arc with a transport badge; transition duration is also configurable per leg (default 4.5 s).
 
 GitHub: https://github.com/calbornozflores/earth-trip-visualizer
 
@@ -62,7 +62,7 @@ ez = [cos(clat)*cos(clon),  cos(clat)*sin(clon),  sin(clat)] # toward viewer
 ```
 
 **Inverse projection** (pixel → Earth texture sample, vectorized over all 1080×1920 pixels):
-1. Normalize pixel offset from center by `GLOBE_R = 520 px` → `(sx, sy)`
+1. Normalize pixel offset from center by `globe_r` → `(sx, sy)`
 2. Visibility: `sx² + sy² ≤ 1`; compute `sz = sqrt(1 - sx² - sy²)`
 3. World 3D: `(x3, y3, z3) = sx·ex + sy·ey + sz·ez`
 4. `lat = arcsin(z3)`, `lon = arctan2(y3, x3)`
@@ -71,31 +71,34 @@ ez = [cos(clat)*cos(clon),  cos(clat)*sin(clon),  sin(clat)] # toward viewer
 **Forward projection** (`geo_to_pixel`) — geographic coords → pixel:
 1. Convert `(lat, lon)` to 3D Cartesian `p`
 2. `depth = dot(p, ez)` — if negative, point is on far hemisphere → return None
-3. `px = CX + dot(p, ex) * GLOBE_R`, `py = CY - dot(p, ey) * GLOBE_R`
+3. `px = CX + dot(p, ex) * globe_r`, `py = CY - dot(p, ey) * globe_r`
+
+`globe_r` is a per-frame value from `FrameSpec.globe_r`. Larger values zoom in (fewer degrees visible). `GLOBE_R = 520` is the normal full-globe constant; `GLOBE_R_ZOOMED = 4000` is the city-pause zoom level.
 
 ### Two-phase rendering per frame
 
-1. **Globe base** (`_get_globe_frame`): numpy projection → cached by `(round(lon,1), round(lat,1))`. Avoids re-projecting identical positions across frames.
-2. **PIL compositing** (`_composite` steps): atmosphere glow RGBA overlay → arc dashes → city glow rings → flag image paste → text labels → transport badge pill.
+1. **Globe base** (`_get_globe_frame(clon, clat, globe_r)`): numpy projection → cached by `(round(lon,1), round(lat,1), round(globe_r,-1))`. Globe mask is also cached per `globe_r` via `_get_globe_mask()`.
+2. **PIL compositing**: atmosphere glow RGBA overlay (skipped when zoomed) → arc dashes → city glow rings → flag image paste → text labels → transport badge pill.
 
 ### Key constants
 - `W, H = 1080, 1920` — output dimensions (9:16)
 - `CX, CY = 540, 960` — globe center pixel
-- `GLOBE_R = 520` — globe radius in pixels (20px margin each side)
+- `GLOBE_R = 520` — normal full-globe radius in pixels (renderer.py)
+- `GLOBE_R_NORMAL = 520`, `GLOBE_R_ZOOMED = 4000`, `ZOOM_RATIO = 0.15` — zoom constants (animator.py)
 - `FPS = 30` in animator and video_builder
 
 ---
 
 ## Animation (animator.py)
 
-`build_frame_specs(cities, transports) → list[FrameSpec]` — pure data, no I/O.
+`build_frame_specs(cities, transports, city_pause_secs=None, transition_secs=None) → list[FrameSpec]` — pure data, no I/O. Duration lists are per-city and per-leg; fall back to `CITY_PAUSE_SEC`/`TRANSITION_SEC` constants if None.
 
 ### Sequence per video
-1. **Intro** (1.5s): fade-in on first city, `ease_out_quad`
-2. **City pause** (2s): static frame centred on city
+1. **Intro** (1.5s): fade-in + zoom in from full globe (`GLOBE_R_NORMAL`) to city level (`GLOBE_R_ZOOMED`), `ease_in_out_cubic`
+2. **City pause** (configurable, default 2s): zoomed-in frame centred on city (`globe_r = GLOBE_R_ZOOMED`)
 3. For each leg:
-   - **Transition** (4.5s): camera interpolates through great-circle midpoint; arc grows with `ease_in_out_cubic`; destination city fades in over last 70% of leg
-   - **Arrival pause** (2s): static on destination, full arc visible
+   - **Transition** (configurable, default 4.5s): first 15% zooms out to full globe, camera pans through great-circle midpoint with arc growth (`ease_in_out_cubic`), last 15% zooms into destination
+   - **Arrival pause** (configurable): zoomed in on destination, full arc visible
 
 ### FrameSpec fields
 ```python
@@ -108,7 +111,8 @@ class FrameSpec:
     arc_lons: np.ndarray | None
     arc_progress: float       # 0-1 fraction of arc to draw
     transport_label: str | None  # e.g. "✈  Plane"
-    fade: float               # overall frame brightness (intro)
+    fade: float = 1.0         # overall frame brightness (intro)
+    globe_r: float = 520.0    # zoom level — GLOBE_R_NORMAL or GLOBE_R_ZOOMED or interpolated
 ```
 
 ---
@@ -152,8 +156,10 @@ Uses `geopy.geocoders.Nominatim` (no API key). Rate-limited to 1.1 req/sec. Resu
 ### City panel structure
 `_cities: list[CityItem]` and `_transports: list[TransportSelector]`, always `len(transports) == len(cities) - 1`. `_add_city()` and `_remove_city()` keep them in sync. Scroll area keeps items top-aligned via a trailing `addStretch(1)` that gets moved on every add.
 
+Each `CityItem` has a `⏱` label + `QDoubleSpinBox#durationSpin` (0.5–10 s, default 2 s) for pause duration. Each `TransportSelector` has a `↔` label + `QDoubleSpinBox#durationSpin` (1–15 s, default 4.5 s) for transition duration. Both use object name `"durationSpin"` and are styled in `_STYLESHEET`.
+
 ### Generation flow
-`CityPanel.generate_requested(names, transport_keys)` → `MainWindow._on_generate` → creates `GenerationWorker(QThread)` → modal `QProgressDialog` → on `finished(path)` → `PlayerPanel.load_video(path)` → `QMediaPlayer` auto-plays.
+`CityPanel.generate_requested(names, transport_keys, city_pause_secs, transition_secs)` → `MainWindow._on_generate` → creates `GenerationWorker(QThread)` → modal `QProgressDialog` → on `finished(path)` → `PlayerPanel.load_video(path)` → `QMediaPlayer` auto-plays.
 
 ---
 
@@ -184,9 +190,9 @@ Uses `geopy.geocoders.Nominatim` (no API key). Rate-limited to 1.1 req/sec. Resu
 ## Performance
 
 - **~100ms per unique globe position** on Apple Silicon M-series
-- Globe cache (rounded to 0.1°) means repeated positions render in microseconds
-- Typical 2-city video: ~300 frames → ~30 seconds render time
-- Each additional city leg adds ~135 frames (~14 seconds)
+- Globe cache keyed on `(round(lon,1), round(lat,1), round(globe_r,-1))` — city pause frames (all at `GLOBE_R_ZOOMED`) still cache well
+- Typical 2-city video at defaults: ~300 frames → ~30 seconds render time
+- Each additional city leg adds ~135 frames (~14 seconds) at default transition duration
 - ffmpeg encoding adds ~2–5 seconds regardless of length
 
 ---

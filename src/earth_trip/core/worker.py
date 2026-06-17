@@ -21,11 +21,15 @@ class GenerationWorker(QThread):
         city_names: list[str],
         transports: list[str],
         earth_texture_path: Path,
+        city_pause_secs: list[float] | None = None,
+        transition_secs: list[float] | None = None,
     ) -> None:
         super().__init__()
         self._city_names = city_names
         self._transports = transports
         self._earth_texture = earth_texture_path
+        self._city_pause_secs = city_pause_secs
+        self._transition_secs = transition_secs
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -49,7 +53,7 @@ class GenerationWorker(QThread):
 
             # Phase 2: Build frame specs (25–30%)
             self.progress.emit(25, "Planning animation…")
-            specs = build_frame_specs(cities, self._transports)
+            specs = build_frame_specs(cities, self._transports, self._city_pause_secs, self._transition_secs)
             total = len(specs)
 
             # Phase 3: Render + encode (30–100%)

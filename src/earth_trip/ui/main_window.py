@@ -69,6 +69,27 @@ QPushButton#removeBtn:hover {
     background: rgba(248,113,113,0.1);
 }
 
+/* Duration spinboxes */
+QDoubleSpinBox#durationSpin {
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 4px 6px;
+    color: #94a3b8;
+    font-size: 13px;
+}
+QDoubleSpinBox#durationSpin:focus {
+    border-color: #4f9cf9;
+    color: #e2e8f0;
+}
+QDoubleSpinBox#durationSpin::up-button,
+QDoubleSpinBox#durationSpin::down-button {
+    width: 14px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+}
+
 /* Transport dropdown */
 QComboBox#transportCombo {
     background-color: #151c2e;
@@ -243,7 +264,7 @@ class MainWindow(QMainWindow):
                 "Earth texture missing.\nRun: uv run python scripts/download_assets.py"
             )
 
-    def _on_generate(self, city_names: list[str], transports: list[str]) -> None:
+    def _on_generate(self, city_names: list[str], transports: list[str], city_pause_secs: list[float], transition_secs: list[float]) -> None:
         if not _TEXTURE.exists():
             QMessageBox.critical(
                 self, "Missing texture",
@@ -261,7 +282,7 @@ class MainWindow(QMainWindow):
         self._progress_dlg.setMinimumDuration(0)
         self._progress_dlg.setValue(0)
 
-        self._worker = GenerationWorker(city_names, transports, _TEXTURE)
+        self._worker = GenerationWorker(city_names, transports, _TEXTURE, city_pause_secs, transition_secs)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)

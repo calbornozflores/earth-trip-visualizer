@@ -6,9 +6,10 @@ Generate cinematic 9:16 Instagram Stories videos of travel routes on a 3D globe 
 
 - Input any number of cities with transport mode between each stop
 - Smooth globe fly-through with great-circle arc animations
+- **City zoom** — camera zooms in to a ~1700 km sky view on arrival; zooms back out for each transition arc
 - City pins with country flags and names
 - Transport badges (✈ Plane, 🚂 Train, 🚌 Bus, 🚗 Car, ⛴ Ship)
-- 2-second pause at each city to read location
+- **Configurable timing** — set pause duration per city (⏱) and transition duration per leg (↔) directly in the UI
 - Built-in video player with play/pause/seek/download
 - Dark, social-media-ready UI
 
@@ -42,12 +43,13 @@ uv run earth-trip
 ## Usage
 
 1. In the **JOURNEY** panel, enter your starting city
-2. Select a transport mode and add the next city
-3. Repeat for all stops (minimum 2 cities)
-4. Click **🎬 Generate Video**
-5. Watch the progress — rendering takes ~1–3 minutes depending on cities
-6. The video plays automatically when ready
-7. Click **⬇ Download** to save the MP4
+2. Adjust the **⏱** spinbox next to the city name to set how long to pause there (default 2 s)
+3. Select a transport mode and set the **↔** spinbox for the transition duration (default 4.5 s)
+4. Add the next city and repeat for all stops (minimum 2 cities)
+5. Click **🎬 Generate Video**
+6. Watch the progress — rendering takes ~1–3 minutes depending on cities
+7. The video plays automatically when ready
+8. Click **⬇ Download** to save the MP4
 
 ## Output
 

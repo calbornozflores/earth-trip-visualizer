@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QVBoxLayout, QWidget, QFrame,
+    QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QSizePolicy, QVBoxLayout, QWidget, QFrame,
 )
 
 
@@ -16,8 +16,21 @@ TRANSPORTS = [
 ]
 
 
+def _duration_spin(min_val: float, max_val: float, default: float, step: float = 0.5) -> QDoubleSpinBox:
+    spin = QDoubleSpinBox()
+    spin.setRange(min_val, max_val)
+    spin.setSingleStep(step)
+    spin.setValue(default)
+    spin.setSuffix(" s")
+    spin.setDecimals(1)
+    spin.setFixedWidth(72)
+    spin.setObjectName("durationSpin")
+    spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    return spin
+
+
 class CityItem(QWidget):
-    """One city row: pin icon + text input + remove button."""
+    """One city row: pin icon + text input + pause duration + remove button."""
 
     remove_requested = pyqtSignal(object)  # self
 
@@ -40,6 +53,15 @@ class CityItem(QWidget):
         self.input.setObjectName("cityInput")
         row.addWidget(self.input, 1)
 
+        clock = QLabel("⏱")
+        clock.setFixedWidth(18)
+        clock.setStyleSheet("color: #64748b; font-size: 13px;")
+        clock.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(clock)
+
+        self._pause_spin = _duration_spin(0.5, 10.0, 2.0)
+        row.addWidget(self._pause_spin)
+
         rm = QPushButton("✕")
         rm.setFixedSize(32, 32)
         rm.setObjectName("removeBtn")
@@ -53,9 +75,12 @@ class CityItem(QWidget):
     def set_city_name(self, name: str) -> None:
         self.input.setText(name)
 
+    def pause_secs(self) -> float:
+        return self._pause_spin.value()
+
 
 class TransportSelector(QWidget):
-    """Connector between two city rows showing a transport dropdown."""
+    """Connector between two city rows: transport dropdown + transition duration."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -63,7 +88,7 @@ class TransportSelector(QWidget):
 
     def _build(self) -> None:
         row = QHBoxLayout(self)
-        row.setContentsMargins(28, 4, 40, 4)
+        row.setContentsMargins(28, 4, 0, 4)
         row.setSpacing(8)
 
         line = QFrame()
@@ -79,6 +104,21 @@ class TransportSelector(QWidget):
             self.combo.addItem(label)
         row.addWidget(self.combo, 1)
 
+        arrow = QLabel("↔")
+        arrow.setFixedWidth(18)
+        arrow.setStyleSheet("color: #64748b; font-size: 13px;")
+        arrow.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(arrow)
+
+        self._trans_spin = _duration_spin(1.0, 15.0, 4.5)
+        row.addWidget(self._trans_spin)
+
+        # Match right margin of CityItem (remove btn 32px + 8px gap = 40px)
+        row.addSpacing(40)
+
     def transport_key(self) -> str:
         idx = self.combo.currentIndex()
         return TRANSPORTS[idx][1] if 0 <= idx < len(TRANSPORTS) else "plane"
+
+    def transition_secs(self) -> float:
+        return self._trans_spin.value()
