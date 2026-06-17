@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
+    QComboBox, QCompleter, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSizePolicy, QVBoxLayout, QWidget, QFrame,
 )
+
+from earth_trip.ui.city_suggestions import CITIES
 
 
 TRANSPORTS = [
@@ -51,6 +53,11 @@ class CityItem(QWidget):
         self.input = QLineEdit()
         self.input.setMinimumHeight(40)
         self.input.setObjectName("cityInput")
+        completer = QCompleter(CITIES, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.input.setCompleter(completer)
         row.addWidget(self.input, 1)
 
         clock = QLabel("⏱")

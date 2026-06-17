@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 
 from earth_trip.core.geocoder import CityInfo
-from earth_trip.utils.geo import slerp_path, great_circle_midpoint, haversine_distance
+from earth_trip.utils.geo import slerp_path, haversine_distance
 from earth_trip.utils.easing import ease_in_out_cubic, ease_out_quad, lerp
 
 FPS = 30
@@ -225,7 +225,6 @@ def build_frame_specs(
         label = TRANSPORT_LABELS.get(transport, transport.title())
 
         arc_lats, arc_lons = slerp_path(city_a.lat, city_a.lon, city_b.lat, city_b.lon, 200)
-        mid_lat, mid_lon = great_circle_midpoint(city_a.lat, city_a.lon, city_b.lat, city_b.lon)
 
         city_a_gr = city_globe_rs[idx]
         city_b_gr = city_globe_rs[idx + 1]
@@ -235,15 +234,10 @@ def build_frame_specs(
             t = i / max(total - 1, 1)
             te = ease_in_out_cubic(t)
 
-            # Camera: move through great-circle midpoint
-            if t <= 0.5:
-                sub = t * 2.0
-                cam_lat = lerp(city_a.lat, mid_lat, ease_in_out_cubic(sub))
-                cam_lon = lerp(city_a.lon, mid_lon, ease_in_out_cubic(sub))
-            else:
-                sub = (t - 0.5) * 2.0
-                cam_lat = lerp(mid_lat, city_b.lat, ease_in_out_cubic(sub))
-                cam_lon = lerp(mid_lon, city_b.lon, ease_in_out_cubic(sub))
+            # Camera follows the arc tip — correct for all routes including antimeridian
+            tip_idx = min(int(te * len(arc_lats)), len(arc_lats) - 1)
+            cam_lat = float(arc_lats[tip_idx])
+            cam_lon = float(arc_lons[tip_idx])
 
             # Zoom cap lerps between city zoom levels so endpoints are seamless
             cap = lerp(city_a_gr, city_b_gr, t)

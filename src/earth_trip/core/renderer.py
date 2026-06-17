@@ -210,6 +210,8 @@ class GlobeRenderer:
         self._mask_cache: dict[int, np.ndarray] = {}
         self._flag_cache: dict[str, Image.Image | None] = {}
         self._icon_cache: dict[str, Image.Image | None] = {}
+        for key in _TWEMOJI_HEX:
+            self._get_transport_icon(key)
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -226,8 +228,14 @@ class GlobeRenderer:
         self._draw_arc(img, spec)
         for cv in spec.cities_visible:
             self._draw_city(img, cv, spec.central_lon, spec.central_lat, globe_r)
-        if spec.transport_label:
-            self._draw_transport_badge(img, spec.transport_label)
+        if spec.transport_label and spec.arc_lats is not None and len(spec.arc_lats) > 0:
+            tip_idx = min(int(spec.arc_progress * len(spec.arc_lats)), len(spec.arc_lats) - 1)
+            tip_px = geo_to_pixel(
+                float(spec.arc_lats[tip_idx]), float(spec.arc_lons[tip_idx]),
+                spec.central_lon, spec.central_lat, spec.globe_r,
+            )
+            if tip_px:
+                self._draw_transport_icon_at(img, spec.transport_label, tip_px)
 
         rgb = np.asarray(img.convert("RGB"))
         if spec.fade < 1.0:
@@ -394,44 +402,19 @@ class GlobeRenderer:
             fill=(180, 210, 255, int(alpha * 0.85)),
         )
 
-    def _draw_transport_badge(self, img: Image.Image, label: str) -> None:
-        icon = self._get_transport_icon(label)
+    def _draw_transport_icon_at(self, img: Image.Image, key: str, px: tuple[int, int]) -> None:
+        icon = self._get_transport_icon(key)
         if icon is None:
             return
-
-        bsize = 216   # badge diameter
-        isize = 150   # icon display size
-        pad = (bsize - isize) // 2
-
-        badge = Image.new("RGBA", (bsize, bsize), (0, 0, 0, 0))
-        bd = ImageDraw.Draw(badge)
-
-        # Outer glow rings
-        for dr in range(14, 0, -1):
-            alpha = int(85 * (1 - dr / 14) ** 2)
-            r = bsize // 2 + dr
-            cx = bsize // 2
-            bd.ellipse([cx - r, cx - r, cx + r - 1, cx + r - 1],
-                       outline=(79, 156, 249, alpha), width=1)
-
-        # Dark fill
-        bd.ellipse([0, 0, bsize - 1, bsize - 1], fill=(12, 22, 52, 215))
-        # Blue ring
-        bd.ellipse([0, 0, bsize - 1, bsize - 1], outline=(79, 156, 249, 175), width=2)
-
-        # Glass highlight — subtle bright ellipse on upper third
-        hl = Image.new("RGBA", (bsize, bsize), (0, 0, 0, 0))
-        hd = ImageDraw.Draw(hl)
-        hd.ellipse([bsize // 4, -bsize // 5, 3 * bsize // 4, bsize // 2],
-                   fill=(255, 255, 255, 20))
-        badge.alpha_composite(hl)
-
-        # Icon
-        icon_sized = icon.resize((isize, isize), Image.LANCZOS)
-        badge.paste(icon_sized, (pad, pad), icon_sized)
-
-        bx = (W - bsize) // 2
-        img.alpha_composite(badge, (bx, 64))
+        size = 80
+        icon_s = icon.resize((size, size), Image.LANCZOS)
+        x, y = int(px[0]), int(px[1])
+        shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
+        r = size // 2 + 8
+        sd.ellipse([x - r, y - r, x + r, y + r], fill=(0, 0, 0, 120))
+        img.alpha_composite(shadow)
+        img.paste(icon_s, (x - size // 2, y - size // 2), icon_s)
 
     def _get_transport_icon(self, key: str) -> Image.Image | None:
         if key in self._icon_cache:
