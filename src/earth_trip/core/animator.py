@@ -6,7 +6,7 @@ import numpy as np
 
 from earth_trip.core.geocoder import CityInfo
 from earth_trip.utils.geo import slerp_path, haversine_distance
-from earth_trip.utils.easing import ease_in_out_cubic, ease_out_quad, lerp
+from earth_trip.utils.easing import ease_in_out_cubic, ease_out_quad, lerp, log_lerp
 
 FPS = 30
 CITY_PAUSE_SEC = 2.0
@@ -22,9 +22,15 @@ _HALF_W = 540.0
 _HALF_H = 960.0
 _ZOOM_MARGIN = 0.85   # keep arc endpoints 15% from screen edge
 
-# Distance scale for adaptive zoom
+# Distance scale for adaptive zoom (fallback when bbox unavailable)
 _D_MIN_KM = 100.0     # ≤ this → GLOBE_R_ZOOM_MAX
 _D_MAX_KM = 10000.0   # ≥ this → GLOBE_R_ZOOM_MIN
+
+# Bbox-based zoom: city bbox fills this fraction of screen half-width
+_BBOX_SCREEN_MARGIN = 1.0        # bbox half-diagonal fills _HALF_W / margin pixels
+_BBOX_GLOBE_R_MAX = 300_000      # tightest zoom for very small administrative areas
+_BBOX_MAX_DIAGONAL_KM = 200.0    # bboxes larger than this span admin territories, not the urban footprint
+_CITY_DEFAULT_GR = 80_000        # fallback for oversized admin bboxes (~107 km view — good for megacities)
 
 TRANSPORT_LABELS = {
     "plane": "plane",
@@ -70,16 +76,36 @@ def _adaptive_city_globe_r(min_dist_km: float) -> float:
     return math.exp(log_r)
 
 
+def _bbox_diagonal_km(bbox: tuple[float, float, float, float]) -> float:
+    south, north, west, east = bbox
+    lat_km = (north - south) * 111.32
+    lon_km = (east - west) * 111.32 * math.cos(math.radians((south + north) / 2))
+    return math.sqrt(lat_km ** 2 + lon_km ** 2)
+
+
+def _city_globe_r_from_bbox(diagonal_km: float) -> float:
+    # globe_r so the city bbox half-diagonal spans (_HALF_W / _BBOX_SCREEN_MARGIN) pixels
+    half_diag = max(diagonal_km / 2.0, 2.0)
+    globe_r = (_HALF_W / _BBOX_SCREEN_MARGIN) * 6371.0 / half_diag
+    return max(float(GLOBE_R_ZOOM_MIN), min(float(_BBOX_GLOBE_R_MAX), globe_r))
+
+
 def _compute_city_globe_rs(cities: list[CityInfo]) -> list[float]:
     result = []
     for i, city in enumerate(cities):
-        dists = []
-        if i > 0:
-            dists.append(haversine_distance(cities[i - 1].lat, cities[i - 1].lon, city.lat, city.lon))
-        if i < len(cities) - 1:
-            dists.append(haversine_distance(city.lat, city.lon, cities[i + 1].lat, cities[i + 1].lon))
-        min_dist = min(dists) if dists else 5000.0
-        result.append(_adaptive_city_globe_r(min_dist))
+        if city.bbox is not None:
+            diag = _bbox_diagonal_km(city.bbox)
+            if diag <= _BBOX_MAX_DIAGONAL_KM:
+                result.append(_city_globe_r_from_bbox(diag))
+            else:
+                result.append(float(_CITY_DEFAULT_GR))  # admin bbox too large (e.g. Tokyo's island territories)
+        else:
+            dists = []
+            if i > 0:
+                dists.append(haversine_distance(cities[i - 1].lat, cities[i - 1].lon, city.lat, city.lon))
+            if i < len(cities) - 1:
+                dists.append(haversine_distance(city.lat, city.lon, cities[i + 1].lat, cities[i + 1].lon))
+            result.append(_adaptive_city_globe_r(min(dists) if dists else 5000.0))
     return result
 
 
@@ -127,7 +153,6 @@ def _globe_r_to_fit(*norm_coords: tuple[float, float] | None, cap: float) -> flo
 
 def _transition_globe_r(
     city_a: CityInfo,
-    city_b: CityInfo,
     arc_lats: np.ndarray,
     arc_lons: np.ndarray,
     arc_progress: float,
@@ -138,20 +163,12 @@ def _transition_globe_r(
     """
     Globe radius for one transition frame.
 
-    First half  (arc_progress ≤ 0.5): fit city_a (arc start) + arc tip.
-    Second half (arc_progress > 0.5): fit arc tip + city_b (destination).
-
-    At arc_progress = 0 and 1, tip ≈ camera ≈ city endpoint → no geometry
-    constraint → globe_r = cap, seamlessly matching the city pause zoom.
+    Always fits city_a (origin) + arc tip in view. The destination is never
+    considered during the transition — it is revealed only at the arrival pause.
     """
     tip_idx = min(int(arc_progress * len(arc_lats)), len(arc_lats) - 1)
     s_tip = _proj_normalized(float(arc_lats[tip_idx]), float(arc_lons[tip_idx]), cam_lon, cam_lat)
-
-    if arc_progress <= 0.5:
-        s_anchor = _proj_normalized(city_a.lat, city_a.lon, cam_lon, cam_lat)
-    else:
-        s_anchor = _proj_normalized(city_b.lat, city_b.lon, cam_lon, cam_lat)
-
+    s_anchor = _proj_normalized(city_a.lat, city_a.lon, cam_lon, cam_lat)
     return _globe_r_to_fit(s_anchor, s_tip, cap=cap)
 
 
@@ -164,12 +181,14 @@ def _pause_frames(
     arc_lons=None,
     arc_progress: float = 0.0,
     globe_r: float = float(GLOBE_R_ZOOM_MIN),
+    also_visible: list[CityInfo] | None = None,
 ) -> list[FrameSpec]:
+    cities_visible = [CityVisible(city, 1.0)] + [CityVisible(c, 1.0) for c in (also_visible or [])]
     return [
         FrameSpec(
             central_lon=city.lon,
             central_lat=city.lat,
-            cities_visible=[CityVisible(city, 1.0)],
+            cities_visible=cities_visible,
             arc_lats=arc_lats,
             arc_lons=arc_lons,
             arc_progress=arc_progress,
@@ -212,7 +231,7 @@ def build_frame_specs(
             arc_lats=None, arc_lons=None, arc_progress=0.0,
             transport_label=None,
             fade=ease_out_quad(t),
-            globe_r=lerp(float(GLOBE_R_NORMAL), city_globe_rs[0], zoom_t),
+            globe_r=log_lerp(float(GLOBE_R_NORMAL), city_globe_rs[0], zoom_t),
         ))
 
     # ── First city pause ────────────────────────────────────────────────────
@@ -227,7 +246,6 @@ def build_frame_specs(
         arc_lats, arc_lons = slerp_path(city_a.lat, city_a.lon, city_b.lat, city_b.lon, 200)
 
         city_a_gr = city_globe_rs[idx]
-        city_b_gr = city_globe_rs[idx + 1]
         total = transition_n(idx)
 
         for i in range(total):
@@ -239,24 +257,18 @@ def build_frame_specs(
             cam_lat = float(arc_lats[tip_idx])
             cam_lon = float(arc_lons[tip_idx])
 
-            # Zoom cap lerps between city zoom levels so endpoints are seamless
-            cap = lerp(city_a_gr, city_b_gr, t)
+            # Cap at departure city zoom — destination not revealed until arrival
+            cap = city_a_gr
 
-            # Geometry-driven zoom: minimum to keep drawn arc visible
+            # Geometry-driven zoom: keep origin + arc tip in view (destination hidden)
             globe_r = _transition_globe_r(
-                city_a, city_b, arc_lats, arc_lons, te, cam_lat, cam_lon, cap=cap,
+                city_a, arc_lats, arc_lons, te, cam_lat, cam_lon, cap=cap,
             )
-
-            # Opacity: city_b fades in over second half
-            b_opacity = ease_out_quad(max(0.0, (t - 0.3) / 0.7))
 
             frames.append(FrameSpec(
                 central_lon=cam_lon,
                 central_lat=cam_lat,
-                cities_visible=[
-                    CityVisible(city_a, 1.0),
-                    CityVisible(city_b, b_opacity),
-                ],
+                cities_visible=[CityVisible(city_a, 1.0)],
                 arc_lats=arc_lats,
                 arc_lons=arc_lons,
                 arc_progress=te,
@@ -264,11 +276,33 @@ def build_frame_specs(
                 globe_r=globe_r,
             ))
 
-        # Arrival pause (zoomed in on destination)
+        # Arrival: split city pause into route-overview zoom + urban hold
+        s_origin_from_dest = _proj_normalized(city_a.lat, city_a.lon, city_b.lon, city_b.lat)
+        arrival_gr = _globe_r_to_fit(s_origin_from_dest, cap=city_a_gr)
+        city_b_gr = city_globe_rs[idx + 1]
+
+        n = city_pause_n(idx + 1)
+        zoom_n = max(2, min(int(FPS * 1.0), n // 3))  # up to 1s, at most 1/3 of pause
+        hold_n = n - zoom_n
+
+        # Zoom from route-overview into destination's urban radius
+        for i in range(zoom_n):
+            t = ease_in_out_cubic(i / max(zoom_n - 1, 1))
+            frames.append(FrameSpec(
+                central_lon=city_b.lon,
+                central_lat=city_b.lat,
+                cities_visible=[CityVisible(city_b, 1.0), CityVisible(city_a, 1.0)],
+                arc_lats=arc_lats, arc_lons=arc_lons, arc_progress=1.0,
+                transport_label=None,
+                globe_r=log_lerp(arrival_gr, city_b_gr, t),
+            ))
+
+        # Hold at urban zoom for remainder of city pause
         frames.extend(_pause_frames(
-            city_b, city_pause_n(idx + 1),
+            city_b, hold_n,
             arc_lats=arc_lats, arc_lons=arc_lons, arc_progress=1.0,
             globe_r=city_b_gr,
+            also_visible=[city_a],
         ))
 
     return frames

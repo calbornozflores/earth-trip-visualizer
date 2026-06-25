@@ -8,7 +8,10 @@ Generate cinematic 9:16 Instagram Stories videos of travel routes on a 3D globe 
 - **City autocomplete** — type a few letters and pick from ~300 world cities
 - Smooth globe fly-through with great-circle arc animations (correct for all routes, including cross-Pacific and antimeridian crossings)
 - **HD satellite imagery** — ESRI World Imagery tiles at city zoom level; NASA Blue Marble for overview
-- **Adaptive city zoom** — camera zooms in closer for nearby cities, wider for distant ones
+- **Urban-extent city zoom** — each city pause zooms to the actual urban footprint of the city (derived from geocoding bounding boxes), not a generic distance-based approximation
+- **Destination reveal** — during transitions the destination city is hidden; it's only revealed when the arc arrives, keeping the route a surprise
+- **Cinematic arrival sequence** — on landing, the full route is visible first, then the camera smoothly zooms into the destination's urban area within the configured pause time
+- **Smooth zoom animations** — all zoom transitions use perceptually uniform log-space interpolation so the camera never appears to stall
 - **Transport emoji on the arc** — the plane/train/bus/car/ship icon travels along the route as the transition plays (no text, just the icon)
 - City pins with country flags and names
 - **Configurable timing** — set pause duration per city (⏱) and transition duration per leg (↔) directly in the UI

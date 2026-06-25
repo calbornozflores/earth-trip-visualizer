@@ -34,7 +34,7 @@ _PATCH_MEM: dict[tuple, tuple] = {}  # key → (patch_arr, lat_min, lat_max, lon
 def _zoom_for(globe_r: float) -> int:
     """Web Mercator zoom level whose pixel resolution matches the given globe_r."""
     z = int(math.log2(max(1.0, 0.02 * globe_r)))
-    return max(0, min(8, z))  # cap at z=8 (~150 m/px) to keep tile counts sane
+    return max(0, min(14, z))  # cap at z=14 to keep tile counts sane
 
 
 def _lon_to_tx(lon: float, n: int) -> float:
@@ -109,9 +109,13 @@ def get_patch(
     z = _zoom_for(globe_r)
     n = 2 ** z
 
-    # Angular extents of the visible area (with 15 % margin)
-    lat_half = min(85.0, math.degrees(math.asin(min(half_h / globe_r, 1.0)))) * 1.15
-    lon_half = min(180.0, math.degrees(math.asin(min(half_w / globe_r, 1.0)))) * 1.15
+    # Angular extents of the visible area (with 20% margin).
+    # At high latitudes the orthographic projection maps screen-x to a larger longitude
+    # range than asin(half_w/globe_r) suggests — correct for cos(lat).
+    lat_half = min(85.0, math.degrees(math.asin(min(half_h / globe_r, 1.0)))) * 1.20
+    lon_half_base = math.degrees(math.asin(min(half_w / globe_r, 1.0)))
+    cos_lat = max(math.cos(math.radians(center_lat)), 0.35)  # cap correction at ~70° lat
+    lon_half = min(180.0, lon_half_base / cos_lat) * 1.20
 
     lat_min_req = max(-85.0, center_lat - lat_half)
     lat_max_req = min(85.0, center_lat + lat_half)
@@ -137,6 +141,7 @@ def get_patch(
         for tx in range(tx0, tx1 + 1):
             tile = _get_tile(z, tx, ty)
             if tile is None:
+                print(f"[tiles] ({z},{tx},{ty}) unavailable — falling back to Blue Marble")
                 return None  # fall back to Blue Marble
             canvas.paste(tile, ((tx - tx0) * _TILE_PX, (ty - ty0) * _TILE_PX))
 

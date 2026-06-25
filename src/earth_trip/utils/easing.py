@@ -19,5 +19,9 @@ def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
 
+def log_lerp(a: float, b: float, t: float) -> float:
+    return math.exp(lerp(math.log(a), math.log(b), t))
+
+
 def smoothstep(t: float) -> float:
     return t * t * (3 - 2 * t)

@@ -28,7 +28,7 @@ _TILE_MIN_R: float = GLOBE_R * 2.0  # ≈ 1040 px
 
 # Twemoji icon assets (CC BY 4.0 — https://twemoji.twitter.com)
 _TWEMOJI_HEX: dict[str, str] = {
-    "plane": "2708-fe0f",
+    "plane": "2708",
     "train": "1f686",
     "bus":   "1f68c",
     "car":   "1f697",

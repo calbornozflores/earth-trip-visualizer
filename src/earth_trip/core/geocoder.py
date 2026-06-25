@@ -20,6 +20,7 @@ class CityInfo:
     lon: float
     country_code: str
     country_name: str
+    bbox: tuple[float, float, float, float] | None = None  # (south, north, west, east) degrees
 
 
 def _get_cache() -> dict:
@@ -41,8 +42,13 @@ def geocode_city(name: str) -> CityInfo | None:
     key = name.strip().lower()
 
     if key in cache:
-        d = cache[key]
-        return CityInfo(**d)
+        d = dict(cache[key])
+        if "bbox" in d and d["bbox"] is not None:
+            raw_bbox = d.pop("bbox")
+            d["bbox"] = tuple(raw_bbox)
+            return CityInfo(**d)
+        # stale (bbox absent or null) — re-geocode
+        del cache[key]
 
     time.sleep(_MIN_DELAY)
     try:
@@ -64,6 +70,9 @@ def geocode_city(name: str) -> CityInfo | None:
         or name
     )
 
+    bb = loc.raw.get("boundingbox")
+    bbox = tuple(float(x) for x in bb) if bb and len(bb) == 4 else None
+
     info = CityInfo(
         name=city_label,
         display_name=loc.address.split(",")[0],
@@ -71,6 +80,7 @@ def geocode_city(name: str) -> CityInfo | None:
         lon=float(loc.longitude),
         country_code=cc,
         country_name=country,
+        bbox=bbox,
     )
 
     cache[key] = {
@@ -80,6 +90,7 @@ def geocode_city(name: str) -> CityInfo | None:
         "lon": info.lon,
         "country_code": info.country_code,
         "country_name": info.country_name,
+        "bbox": list(info.bbox) if info.bbox else None,
     }
     save_geocode_cache(cache)
     return info
