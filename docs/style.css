@@ -35,6 +35,8 @@ body {
   gap: 32px;
   height: 100vh;
   padding: 20px 32px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .left {
@@ -45,7 +47,14 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   gap: 14px;
+}
+
+.left > * {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
 }
 
 .right {
@@ -153,6 +162,26 @@ header a:hover {
 
 .transport-row .field {
   flex: 0 0 160px;
+}
+
+button#addStopBtn {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+button#addStopBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(108, 99, 255, 0.08);
 }
 
 button#watchBtn {

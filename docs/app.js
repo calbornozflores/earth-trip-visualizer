@@ -399,6 +399,24 @@ function runLoop(token, cityA, cityB, arcPoints, transportKey) {
 
 document.getElementById('watchBtn').addEventListener('click', watchPreview);
 
+// "＋ Add Stop" mirrors the desktop app's own button (city_panel.py) to show
+// multi-stop routes exist, without building multi-leg support here — it
+// only swaps the status line to a note and restores it, never touches
+// geocoding or the animation loop.
+let addStopNoteTimer = null;
+document.getElementById('addStopBtn').addEventListener('click', () => {
+  const status = document.getElementById('status');
+  const prevText = status.textContent;
+  const prevClass = status.className;
+  clearTimeout(addStopNoteTimer);
+  status.textContent = '🖥️  Multi-stop routes are supported in the desktop app — this preview covers one leg.';
+  status.className = '';
+  addStopNoteTimer = setTimeout(() => {
+    status.textContent = prevText;
+    status.className = prevClass;
+  }, 2500);
+});
+
 loadTexture()
   .then(() => { watchPreview(); })
   .catch((err) => {
