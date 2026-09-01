@@ -201,20 +201,34 @@ function drawPin(x, y, label, flag) {
   ctx.arc(x, y, 4, 0, Math.PI * 2);
   ctx.fill();
 
-  const text = `${flag}  ${label}`;
-  ctx.font = "700 15px 'Segoe UI', system-ui, sans-serif";
-  const w = ctx.measureText(text).width + 22;
+  // Flag emoji glyphs carry a lot of built-in side padding that
+  // measureText() doesn't report, so measuring "flag + label" as one
+  // string and centering on that width leaves the pill lopsided (empty
+  // gap before the flag). Instead: measure only the label, reserve a
+  // fixed icon slot for the flag, and lay both out left-aligned.
+  const labelFont = "700 15px 'Segoe UI', system-ui, sans-serif";
+  ctx.font = labelFont;
+  const labelWidth = ctx.measureText(label).width;
+  const flagSlot = 20, gap = 6, padX = 14, pillH = 28;
+  const w = flagSlot + gap + labelWidth + padX * 2;
+  const left = x - w / 2;
+  const midY = y + 16 + pillH / 2;
+
   ctx.fillStyle = 'rgba(15,15,26,0.9)';
   ctx.strokeStyle = 'rgba(108,99,255,0.5)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(x - w / 2, y + 16, w, 28, 14);
+  ctx.roundRect(left, y + 16, w, pillH, pillH / 2);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#e2e8f0';
-  ctx.textAlign = 'center';
+
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, x, y + 30);
+  ctx.font = '16px serif';
+  ctx.fillText(flag, left + padX, midY);
+  ctx.font = labelFont;
+  ctx.fillStyle = '#e2e8f0';
+  ctx.fillText(label, left + padX + flagSlot + gap, midY);
   ctx.restore();
 }
 
