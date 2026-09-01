@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 
 from earth_trip.ui.city_item import CityItem, TransportSelector
+from earth_trip.ui import theme
 
 
 class CityPanel(QWidget):
@@ -34,7 +35,7 @@ class CityPanel(QWidget):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #334155; margin: 12px 0 16px 0;")
+        sep.setStyleSheet(f"background: {theme.BORDER}; margin: 12px 0 16px 0;")
         sep.setFixedHeight(1)
         outer.addWidget(sep)
 

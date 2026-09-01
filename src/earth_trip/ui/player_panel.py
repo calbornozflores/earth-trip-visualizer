@@ -4,13 +4,14 @@ import shutil
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QPalette, QColor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QPushButton,
     QSizePolicy, QSlider, QVBoxLayout, QWidget, QFrame,
 )
+
+from earth_trip.ui import theme
 
 
 def _ms_to_str(ms: int) -> str:
@@ -53,7 +54,7 @@ class PlayerPanel(QWidget):
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #1e293b;")
+        sep.setStyleSheet(f"background: {theme.BORDER};")
         sep.setFixedHeight(1)
         layout.addWidget(sep)
 

@@ -38,6 +38,7 @@ src/earth_trip/
 │   ├── cache.py               # platformdirs-based JSON/PNG cache
 │   └── worker.py              # GenerationWorker(QThread) — runs geocode+render+encode
 ├── ui/
+│   ├── theme.py                # Design tokens + build_stylesheet() — single source for all UI colors/fonts
 │   ├── main_window.py         # QMainWindow, dark stylesheet, splitter layout
 │   ├── city_panel.py          # Left panel: CityItem list + Generate button
 │   ├── city_item.py           # Single city row widget + TransportSelector + QCompleter
@@ -46,6 +47,8 @@ src/earth_trip/
 └── utils/
     ├── geo.py              # slerp_path(), haversine_distance()
     └── easing.py           # ease_in_out_cubic(), ease_out_quad(), lerp(), smoothstep()
+
+docs/                        # GitHub Pages: lightweight watch-only web preview (see below)
 ```
 
 ---
@@ -177,8 +180,12 @@ Uses `geopy.geocoders.Nominatim` (no API key). Rate-limited to 1.1 req/sec. Resu
 
 ### Layout
 - `QMainWindow` → `QSplitter(Horizontal)` → `[CityPanel(320px) | PlayerPanel]`
-- Dark theme via single `_STYLESHEET` string in `main_window.py`
-- All colours: bg `#0a0a0f`, accent `#4f9cf9`, purple `#8b5cf6`, text `#e2e8f0`, card `#1e293b`
+- Dark theme built by `ui/theme.py:build_stylesheet()`, applied once in `main_window.py`. All
+  colors/fonts are token constants in `theme.py` — never hardcode a hex value in a widget file.
+  Follows the shared design standard at `personal/DESIGN_SYSTEM.md` (reference: poke-dojo):
+  bg `#0f0f1a`, surface `#1a1a2e`/`#16213e`, border `#2a2a4a`, accent `#6c63ff` → `#a78bfa`
+  gradient, text `#e2e8f0`/`#94a3b8` (plus project-local `TEXT_DIM`/`TEXT_DIMMER` for tertiary
+  text, not part of the shared standard).
 
 ### City panel structure
 `_cities: list[CityItem]` and `_transports: list[TransportSelector]`, always `len(transports) == len(cities) - 1`. `_add_city()` and `_remove_city()` keep them in sync.
@@ -230,6 +237,33 @@ Each `TransportSelector` has:
 - Typical 2-city video at defaults: ~300 frames → ~30 seconds render time
 - Each additional city leg adds ~135 frames (~14 seconds) at default settings
 - ffmpeg encoding adds ~2–5 seconds regardless of length
+
+---
+
+## Web demo (docs/) — GitHub Pages
+
+A separate, lightweight watch-only preview at `docs/`, deployed via GitHub Pages ("Deploy from
+branch → `master`/`docs`"). It is **not** a port of this app — it's a from-scratch vanilla
+JS/Canvas reimplementation of the core idea, deliberately scoped down:
+
+- `docs/app.js` ports the projection math from this file (camera basis, inverse/forward
+  projection, `slerp_path`) directly to JS, rendering a small internal raster (450×800) that's
+  drawn onto the display canvas — no numpy/Pillow/Pyodide involved.
+- No video is produced (watch-only, loops in the browser via `requestAnimationFrame`) — so there
+  is no `ffmpeg`/`ffmpeg.wasm`/`MediaRecorder` step, and reading pixels back out of the canvas is
+  never needed, which sidesteps any CORS/canvas-tainting concern entirely.
+- Uses the bundled `docs/assets/earth_texture.jpg` (same NASA Blue Marble source, committed here
+  since GitHub Pages can't run `scripts/download_assets.py`) instead of live ESRI satellite
+  tiles — zoom is capped well below this app's `_TILE_MIN_R` threshold since Blue Marble alone
+  can't render a true close-up cleanly.
+- Uses Unicode emoji for flags/transport icons instead of the flagcdn/Twemoji CDN fetches this
+  app uses — one less runtime network dependency.
+- Geocoding is live (`fetch()` to Nominatim), same service as `geocoder.py`.
+- Styled with the same tokens as the desktop app (`docs/style.css` mirrors `ui/theme.py`) per
+  `personal/DESIGN_SYSTEM.md`.
+
+Single-leg only (one "from" city, one "to" city) — does not replicate this app's arbitrary
+multi-stop itineraries.
 
 ---
 

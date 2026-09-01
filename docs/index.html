@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Trip Visualizer — Web Demo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>🌍 Earth Trip Visualizer</h1>
+    <p>
+      A lightweight, in-browser preview of the desktop app.
+      Type two real cities and watch a simplified fly-through animate right here —
+      no install required. For the full-resolution, downloadable Instagram Stories MP4,
+      <a href="https://github.com/calbornozflores/earth-trip-visualizer" target="_blank" rel="noopener">
+        run the real desktop app</a>.
+    </p>
+  </header>
+
+  <div class="notice">
+    <strong>This is a preview, not the production tool.</strong>
+    It renders a scaled-down globe entirely in your browser (no video is produced or
+    downloadable), uses the same NASA Blue Marble texture as the desktop app instead of
+    live satellite zoom-in, and uses emoji for flags/transport icons instead of fetched
+    artwork. City search is real — it geocodes through the same public OpenStreetMap
+    service the desktop app uses.
+  </div>
+
+  <div class="form-card">
+    <div class="form-row">
+      <div class="field">
+        <label for="cityA">From</label>
+        <input id="cityA" type="text" value="Paris, France" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="cityB">To</label>
+        <input id="cityB" type="text" value="Tokyo, Japan" autocomplete="off">
+      </div>
+    </div>
+    <div class="transport-row">
+      <div class="field">
+        <label for="transport">Transport</label>
+        <select id="transport">
+          <option value="plane" selected>✈ Plane</option>
+          <option value="train">🚂 Train</option>
+          <option value="bus">🚌 Bus</option>
+          <option value="car">🚗 Car</option>
+          <option value="ship">⛴ Ship</option>
+        </select>
+      </div>
+    </div>
+    <button id="watchBtn">▶  Watch Preview</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="stage">
+    <canvas id="globe" width="450" height="800"></canvas>
+  </div>
+
+  <footer>
+    Source texture: NASA Visible Earth Blue Marble (public domain) ·
+    Geocoding: <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap Nominatim</a>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

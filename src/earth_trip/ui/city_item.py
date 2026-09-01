@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 
 from earth_trip.ui.city_suggestions import CITIES
+from earth_trip.ui import theme
 
 
 TRANSPORTS = [
@@ -62,7 +63,7 @@ class CityItem(QWidget):
 
         clock = QLabel("⏱")
         clock.setFixedWidth(18)
-        clock.setStyleSheet("color: #64748b; font-size: 13px;")
+        clock.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 13px;")
         clock.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(clock)
 
@@ -101,7 +102,7 @@ class TransportSelector(QWidget):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.VLine)
         line.setFixedWidth(2)
-        line.setStyleSheet("background: #334155;")
+        line.setStyleSheet(f"background: {theme.BORDER};")
         row.addWidget(line)
 
         self.combo = QComboBox()
@@ -113,7 +114,7 @@ class TransportSelector(QWidget):
 
         arrow = QLabel("↔")
         arrow.setFixedWidth(18)
-        arrow.setStyleSheet("color: #64748b; font-size: 13px;")
+        arrow.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 13px;")
         arrow.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(arrow)
 
