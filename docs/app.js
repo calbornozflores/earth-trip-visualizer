@@ -317,11 +317,22 @@ async function geocode(query) {
   const data = await res.json();
   if (!data.length) throw new Error(`Couldn't find "${query}"`);
   const hit = data[0];
-  const cc = hit.address && hit.address.country_code;
+  const addr = hit.address || {};
+  const cc = addr.country_code;
+  // Prefer a real place name from the address breakdown; Nominatim doesn't
+  // always tag one as city/town/village (e.g. Tokyo resolves at prefecture
+  // level). Only fall back to the raw query when none exist at all — and in
+  // that case use it as-is, since it may already read "City, Country" and
+  // appending the country again would duplicate it.
+  const cityName = addr.city || addr.town || addr.village || addr.municipality
+    || addr.city_district || addr.county || addr.state;
+  const label = cityName
+    ? (addr.country ? `${cityName}, ${addr.country}` : cityName)
+    : query;
   return {
     lat: parseFloat(hit.lat),
     lon: parseFloat(hit.lon),
-    label: (hit.address && (hit.address.city || hit.address.town || hit.address.village)) || query,
+    label,
     flag: countryCodeToFlagEmoji(cc),
   };
 }
